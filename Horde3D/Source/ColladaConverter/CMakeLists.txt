@@ -12,6 +12,7 @@ add_executable(ColladaConv
 	daeLibImages.h
 	daeLibMaterials.h
 	daeLibVisualScenes.h
+	tiny_gltf.h
 	daeMain.h
 	optimizer.h
 	utils.h
