@@ -14,6 +14,7 @@
 #include "converter.h"
 #include "utPlatform.h"
 #include <algorithm>
+#include <memory>
 
 #ifdef PLATFORM_WIN
 #   define WIN32_LEAN_AND_MEAN 1
@@ -31,7 +32,7 @@
 
 using namespace std;
 using namespace Horde3D;
-using namespace ColladaConverter;
+using namespace AssetConverter;
 
 
 struct AssetTypes
@@ -44,8 +45,59 @@ struct AssetTypes
 	};
 };
 
+struct SupportedFormats
+{
+	enum List
+	{
+		Unsupported = 0,
+		Collada,
+		GLTF,
+		FBX
+	};
+};
 
-void createAssetList( const string &basePath, const string &assetPath, vector< string > &assetList )
+struct Asset
+{
+	SupportedFormats::List	format;
+	std::string				path;
+
+	Asset() {}
+
+	Asset( int f, const std::string &p ): format( ( SupportedFormats::List ) f ), path( p )
+	{
+
+	}
+};
+
+struct ConverterParameters
+{
+	std::string assetPath;
+	std::string assetName;
+	std::string modelName;
+	std::string sourcePath;
+	std::string outPath;
+
+	float lodDists[ 4 ];
+
+	int assetType;
+	bool overwriteMats;
+	bool optimizeGeometry;
+};
+
+int checkFileSupported( const std::string &input )
+{
+	size_t len = input.length();
+	const char *file = input.c_str();
+
+	if ( len > 4 && _stricmp( file + ( len - 4 ), ".dae" ) == 0 ) return SupportedFormats::Collada;
+	if ( len > 4 && _stricmp( file + ( len - 4 ), ".fbx" ) == 0 ) return SupportedFormats::FBX;
+	if ( len > 4 && _stricmp( file + ( len - 4 ), ".bin" ) == 0 ) return SupportedFormats::GLTF;
+	if ( len > 5 && _stricmp( file + ( len - 5 ), ".gltf" ) == 0 ) return SupportedFormats::GLTF;
+
+	return SupportedFormats::Unsupported;
+}
+
+void createAssetList( const string &basePath, const string &assetPath, vector< Asset > &assetList )
 {
 	vector< string >  directories;
 	vector< string >  files;
@@ -99,11 +151,11 @@ void createAssetList( const string &basePath, const string &assetPath, vector< s
 	// Check file extensions
 	for( unsigned int i = 0; i < files.size(); ++i )
 	{
-		size_t len = files[i].length();
-
-		if( len > 4 && _stricmp( files[i].c_str() + (len-4), ".dae" ) == 0 )
+		int fileSupported = checkFileSupported( files[ i ] );
+		if ( fileSupported != SupportedFormats::Unsupported )
 		{
-			assetList.push_back( assetPath + files[i] );
+			Asset asset( fileSupported, assetPath + files[ i ] );
+			assetList.emplace_back( asset );
 		}
 	}
 	
@@ -118,7 +170,8 @@ void createAssetList( const string &basePath, const string &assetPath, vector< s
 void printHelp()
 {
 	log( "Usage:" );
-	log( "ColladaConv input [optional arguments]" );
+	log( "AssetConv input [optional arguments]" );
+	log( "Supported formats: collada (dae), gltf (gltf, bin), fbx (fbx)" );
 	log( "" );
 	log( "input             asset file or directory to be processed" );
 	log( "-type model|anim  asset type to be processed (default: model)" );
@@ -133,10 +186,62 @@ void printHelp()
 	log( "-lodDist4 dist    distance for LOD4" );
 }
 
+bool parseColladaFile( const Asset &asset, const ConverterParameters &params )
+{
+	std::unique_ptr< ColladaDocument > daeDoc = std::unique_ptr< ColladaDocument >( new ColladaDocument() ); // make_unique not available in c++11
+
+	log( "Parsing dae asset '" + asset.path + "'..." );
+	if ( !daeDoc->parseFile( params.sourcePath ) )
+		return false;
+
+	if ( params.assetType == AssetTypes::Model )
+	{
+		log( "Compiling model data..." );
+		Converter *converter = new Converter( *daeDoc, params.outPath, params.lodDists );
+		converter->convertModel( params.optimizeGeometry );
+
+		createDirectories( params.outPath, params.assetPath );
+		converter->writeModel( params.assetPath, params.assetName, params.modelName );
+		converter->writeMaterials( params.assetPath, params.modelName, params.overwriteMats );
+
+		delete converter; converter = 0x0;
+	}
+	else if ( params.assetType == AssetTypes::Animation )
+	{
+		log( "Compiling animation data..." );
+		Converter *converter = new Converter( *daeDoc, params.outPath, params.lodDists );
+		converter->convertModel( false );
+
+		if ( converter->hasAnimation() )
+		{
+			createDirectories( params.outPath, params.assetPath );
+			converter->writeAnimation( params.assetPath, params.assetName );
+		}
+		else
+		{
+			log( "Skipping file (does not contain animation data)" );
+		}
+
+		delete converter; converter = 0x0;
+	}
+
+// 	delete daeDoc; daeDoc = 0x0;
+	return true;
+}
+
+bool parseFBXFile( const Asset &asset )
+{
+	return true;
+}
+
+bool parseGLTFFile( const Asset &asset )
+{
+	return true;
+}
 
 int main( int argc, char **argv )
 {
-	log( "Horde3D ColladaConv - 2.0.0" );
+	log( "Horde3D Asset Converter - 2.1.0" );
 	log( "" );
 	
 	if( argc < 2 )
@@ -149,14 +254,14 @@ int main( int argc, char **argv )
 	// Parse arguments
 	// =============================================================================================
 
-	vector< string > assetList;
+	vector< Asset > assetList;
 	string input = argv[1], basePath = "./", outPath = "./";
 	AssetTypes::List assetType = AssetTypes::Model;
 	bool geoOpt = true, overwriteMats = false, addModelName = false;
 	float lodDists[4] = { 10, 20, 40, 80 };
 	string modelName = "";	
 
-	// Make sure that first argument ist not an option
+	// Make sure that first argument is not an option
 	if( argv[1][0] == '-' )
 	{
 		log( "Missing input file or dir; use . for repository root" );
@@ -215,7 +320,8 @@ int main( int argc, char **argv )
 	}
 
 	// Check whether input is single file or directory and create asset input list
-	if( input.length() > 4 && _stricmp( input.c_str() + (input.length() - 4), ".dae" ) == 0 )
+	int fileSupported = checkFileSupported( input );
+	if( fileSupported != SupportedFormats::Unsupported )
 	{
 		// Check if it's an absolute path
 		if( input[0] == '/' || input[1] == ':' || input[0] == '\\' )
@@ -224,7 +330,9 @@ int main( int argc, char **argv )
 			_chdir( input.substr( 0, index ).c_str() );
 			input = input.substr( index + 1, input.length() - index );
 		}
-		assetList.push_back ( input );
+
+		Asset asset( fileSupported, input );
+		assetList.emplace_back( asset );
 	}
 	else
 	{
@@ -254,57 +362,47 @@ int main( int argc, char **argv )
 	string tmpStr;
 	tmpStr.reserve( 256 );
 	
+	// Prepare converter parameters and start parsing/converting
+	ConverterParameters cvParams;
+	cvParams.optimizeGeometry = geoOpt;
+	cvParams.overwriteMats = overwriteMats;
+	memcpy( &cvParams.lodDists, &lodDists, sizeof( float ) * 4 );
+	cvParams.outPath = outPath;
+
 	for( unsigned int i = 0; i < assetList.size(); ++i )
 	{
 		if( assetType == AssetTypes::Model || assetType == AssetTypes::Animation )
 		{
-			string sourcePath = basePath + assetList[i];
-			string assetName = extractFileName( assetList[i], false );
+			cvParams.sourcePath = basePath + assetList[i].path;
+			cvParams.assetName = extractFileName( assetList[i].path, false );
 
 			if( addModelName )	
-				modelName = assetName + "_";
+				cvParams.modelName = cvParams.assetName + "_";
 
-			string assetPath = cleanPath( extractFilePath( assetList[i] ) );
-			if( !assetPath.empty() ) assetPath += "/";
+			cvParams.assetPath = cleanPath( extractFilePath( assetList[i].path ) );
+			if( !cvParams.assetPath.empty() ) cvParams.assetPath += "/";
 			
-			ColladaDocument *daeDoc = new ColladaDocument();
-			
-			log( "Parsing dae asset '" + assetList[i] + "'..." );
-			if( !daeDoc->parseFile( sourcePath ) )
-				return 1;
-			
-			if( assetType == AssetTypes::Model )
+			bool result = true;
+			switch ( assetList[ i ].format )
 			{
-				log( "Compiling model data..." );
-				Converter *converter = new Converter( *daeDoc, outPath, lodDists );
-				converter->convertModel( geoOpt );
-				
-				createDirectories( outPath, assetPath );
-				converter->writeModel( assetPath, assetName, modelName );
-				converter->writeMaterials( assetPath, modelName, overwriteMats );
-
-				delete converter; converter = 0x0;
+				case SupportedFormats::Collada:
+					result = parseColladaFile( assetList[ i ], cvParams );
+					break;
+				case SupportedFormats::FBX:
+					result = parseFBXFile( assetList[ i ] );
+					break;
+				case SupportedFormats::GLTF:
+					result = parseGLTFFile( assetList[ i ] );
+					break;
+				default:
+					break;
 			}
-			else if( assetType == AssetTypes::Animation )
-			{	
-				log( "Compiling animation data..." );
-				Converter *converter = new Converter( *daeDoc, outPath, lodDists );
-				converter->convertModel( false );
-				
-				if( converter->hasAnimation() )
-				{
-					createDirectories( outPath, assetPath );
-					converter->writeAnimation( assetPath, assetName );
-				}
-				else
-				{
-					log( "Skipping file (does not contain animation data)" );
-				}
 
-				delete converter; converter = 0x0;
+			if ( !result )
+			{
+				log( "Failed to parse and convert file '" + assetList[ i ].path + "'. Skipping." );
+				continue;
 			}
-			
-			delete daeDoc; daeDoc = 0x0;
 		}
 
 		log( "" );
