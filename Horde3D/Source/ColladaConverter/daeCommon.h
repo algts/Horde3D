@@ -19,7 +19,7 @@
 #include <vector>
 
 namespace Horde3D {
-namespace ColladaConverter {
+namespace AssetConverter {
 
 
 struct DaeSource
@@ -93,7 +93,7 @@ struct DaeSource
 };
 
 
-} // namespace ColladaConverter
+} // namespace AssetConverter
 } // namespace Horde3D
 
 #endif // _daeCommon_H_

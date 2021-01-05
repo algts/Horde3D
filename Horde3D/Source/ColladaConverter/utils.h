@@ -20,7 +20,7 @@
 #include <string>
 
 namespace Horde3D {
-namespace ColladaConverter {
+namespace AssetConverter {
 
 
 void removeGate( std::string &s );
@@ -161,7 +161,7 @@ inline bool parseInt( char *&str, int &i )
 }
 
 
-} // namespace ColladaConverter
+} // namespace AssetConverter
 } // namespace Horde3D
 
 #endif // _utils_H_

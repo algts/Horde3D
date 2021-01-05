@@ -19,7 +19,7 @@
 #include <vector>
 
 namespace Horde3D {
-namespace ColladaConverter {
+namespace AssetConverter {
 
 
 struct DaeEffect
@@ -197,7 +197,7 @@ struct DaeLibEffects
 };
 
 
-} // namespace ColladaConverter
+} // namespace AssetConverter
 } // namespace Horde3D
 
 #endif // _daeLibEffects_H_

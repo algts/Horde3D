@@ -24,7 +24,7 @@
 #include "daeLibNodes.h"
 
 namespace Horde3D {
-namespace ColladaConverter {
+namespace AssetConverter {
 
 
 class ColladaDocument
@@ -48,7 +48,7 @@ public:
 };
 
 
-} // namespace ColladaConverter
+} // namespace AssetConverter
 } // namespace Horde3D
 
 #endif // _daeMain_H_

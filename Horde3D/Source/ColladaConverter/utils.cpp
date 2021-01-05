@@ -28,7 +28,7 @@
 
 using namespace std;
 namespace Horde3D {
-namespace ColladaConverter {
+namespace AssetConverter {
 
 
 void removeGate( string &s )
@@ -180,5 +180,5 @@ void createDirectories( const string &basePath, const string &newPath )
 }
 
 
-} // namespace ColladaConverter
+} // namespace AssetConverter
 } // namespace Horde3D

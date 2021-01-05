@@ -18,7 +18,7 @@
 #include <string.h> // memset
 
 namespace Horde3D {
-namespace ColladaConverter {
+namespace AssetConverter {
 
 
 struct Joint;
@@ -186,7 +186,7 @@ private:
 };
 
 
-} // namespace ColladaConverter
+} // namespace AssetConverter
 } // namespace Horde3D
 
 #endif // _converter_H_

@@ -21,7 +21,7 @@
 #include <vector>
 
 namespace Horde3D {
-namespace ColladaConverter {
+namespace AssetConverter {
 
 
 struct DaeVSource
@@ -472,7 +472,7 @@ public:
 };
 
 
-} // namespace ColladaConverter
+} // namespace AssetConverter
 } // namespace Horde3D
 
 #endif // _daeLibGeometries_H_

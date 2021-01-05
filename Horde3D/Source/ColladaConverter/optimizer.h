@@ -18,7 +18,7 @@
 #include <map>
 
 namespace Horde3D {
-namespace ColladaConverter {
+namespace AssetConverter {
 
 
 struct TriGroup;
@@ -57,7 +57,7 @@ public:
 };
 
 
-} // namespace ColladaConverter
+} // namespace AssetConverter
 } // namespace Horde3D
 
 #endif	// _optimizer_H_

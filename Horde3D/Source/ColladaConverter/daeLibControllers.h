@@ -18,7 +18,7 @@
 #include <vector>
 
 namespace Horde3D {
-namespace ColladaConverter {
+namespace AssetConverter {
 
 
 struct DaeWeight
@@ -344,7 +344,7 @@ struct DaeLibControllers
 };
 
 
-} // namespace ColladaConverter
+} // namespace AssetConverter
 } // namespace Horde3D
 
 #endif // _daeLibControllers_H_

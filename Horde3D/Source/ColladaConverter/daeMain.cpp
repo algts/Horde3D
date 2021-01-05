@@ -16,7 +16,7 @@
 
 using namespace std;
 namespace Horde3D {
-namespace ColladaConverter {
+namespace AssetConverter {
 
 
 ColladaDocument::ColladaDocument()
@@ -134,5 +134,5 @@ bool ColladaDocument::parseFile( const string &fileName )
 }
 
 
-} // namespace ColladaConverter
+} // namespace AssetConverter
 } // namespace Horde3D

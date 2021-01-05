@@ -21,7 +21,7 @@
 #include <algorithm>
 
 namespace Horde3D {
-namespace ColladaConverter {
+namespace AssetConverter {
 
 
 struct DaeSampler
@@ -293,7 +293,7 @@ struct DaeLibAnimations
 };
 
 
-} // namespace ColladaConverter
+} // namespace AssetConverter
 } // namespace Horde3D
 
 #endif // _daeLibAnimations_H_

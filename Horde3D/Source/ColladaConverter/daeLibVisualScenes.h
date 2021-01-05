@@ -20,7 +20,7 @@
 #include <map>
 
 namespace Horde3D {
-namespace ColladaConverter {
+namespace AssetConverter {
 
 
 struct DaeTransformation
@@ -346,7 +346,7 @@ struct DaeLibVisScenes
 };
 
 
-} // namespace ColladaConverter
+} // namespace AssetConverter
 } // namespace Horde3D
 
 #endif // _daeLibVisualScenes_H_

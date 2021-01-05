@@ -18,7 +18,7 @@
 #include <vector>
 
 namespace Horde3D {
-namespace ColladaConverter {
+namespace AssetConverter {
 
 
 struct DaeImage
@@ -97,7 +97,7 @@ struct DaeLibImages
 };
 
 
-} // namespace ColladaConverter
+} // namespace AssetConverter
 } // namespace Horde3D
 
 #endif // _daeLibImages_H_

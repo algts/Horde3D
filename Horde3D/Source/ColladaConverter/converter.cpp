@@ -27,7 +27,7 @@
 
 using namespace std;
 namespace Horde3D {
-namespace ColladaConverter {
+namespace AssetConverter {
 
 
 // little endian element writer
@@ -1444,5 +1444,5 @@ bool Converter::writeAnimation( const string &assetPath, const string &assetName
 }
 
 
-} // namespace ColladaConverter
+} // namespace AssetConverter
 } // namespace Horde3D
