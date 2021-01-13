@@ -102,6 +102,14 @@ string extractFilePath( const string &fullPath )
 }
 
 
+std::string extractFileExtension( const std::string &fullPath )
+{
+	if ( fullPath.find_last_of( "." ) != std::string::npos )
+		return fullPath.substr( fullPath.find_last_of( "." ) + 1 );
+
+	return "";
+}
+
 string cleanPath( const string &path )
 {
 	size_t len = path.length();

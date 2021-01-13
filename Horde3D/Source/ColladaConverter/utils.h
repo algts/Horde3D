@@ -27,6 +27,7 @@ void removeGate( std::string &s );
 std::string decodeURL( const std::string &url );
 std::string extractFileName( const std::string &fullPath, bool extension );
 std::string extractFilePath( const std::string &fullPath );
+std::string extractFileExtension( const std::string &fullPath );
 std::string cleanPath( const std::string &path );
 
 void log( const std::string &msg );
