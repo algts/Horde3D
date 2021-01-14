@@ -73,10 +73,6 @@ private:
 private:
 	ColladaDocument						&_daeDoc;
 	
-	std::vector< Mesh * >				_meshes;
-	std::vector< Joint * >				_joints;
-	std::vector< MorphTarget >			_morphTargets;
-	std::vector< SceneNode* >			_nodes;
 };
 
 

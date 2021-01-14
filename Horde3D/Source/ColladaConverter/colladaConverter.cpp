@@ -26,28 +26,29 @@
 #include <algorithm>
 
 using namespace std;
+
 namespace Horde3D {
 namespace AssetConverter {
 namespace ColladaConverterNS {
 
 
 // little endian element writer
-template<class T>
-inline void fwrite_le(const T* data, size_t count, FILE* f)
-{
-    char buffer[256];
-    ASSERT(sizeof(T) < sizeof(buffer));
-    const size_t capacity = sizeof(buffer) / sizeof(T);
-
-    size_t i = 0;
-    while(i < count)
-    {
-        size_t nelems = std::min(capacity, (count - i));
-        data = (const T*) elemcpy_le((T*)(buffer), data, nelems);
-        fwrite(buffer, sizeof(T), nelems, f);
-        i += nelems;
-    }
-}
+// template<class T>
+// inline void fwrite_le(const T* data, size_t count, FILE* f)
+// {
+//     char buffer[256];
+//     ASSERT(sizeof(T) < sizeof(buffer));
+//     const size_t capacity = sizeof(buffer) / sizeof(T);
+// 
+//     size_t i = 0;
+//     while(i < count)
+//     {
+//         size_t nelems = std::min(capacity, (count - i));
+//         data = (const T*) elemcpy_le((T*)(buffer), data, nelems);
+//         fwrite(buffer, sizeof(T), nelems, f);
+//         i += nelems;
+//     }
+// }
 
 ColladaConverter::ColladaConverter( ColladaDocument &doc, const string &outPath, const float *lodDists ) :
 	_daeDoc( doc )
@@ -78,7 +79,8 @@ SceneNode * ColladaConverter::createSceneNode( AvailableSceneNodeTypes type )
 		case AvailableSceneNodeTypes::Mesh:
 		{	
 			auto mesh = new Mesh();
-			mesh->converterNodeParams = new SceneNodeParameters();
+			mesh->scncp = SceneNodeParameters();
+//			mesh->converterNodeParams = new SceneNodeParameters();
 			
 			_meshes.push_back( mesh );
 
@@ -87,8 +89,12 @@ SceneNode * ColladaConverter::createSceneNode( AvailableSceneNodeTypes type )
 		case AvailableSceneNodeTypes::Joint:
 		{
 			auto joint = new Joint();
-			joint->converterNodeParams = new SceneNodeParameters();
-			joint->converterJointParams = new JointParameters();
+//			joint->converterNodeParams = new SceneNodeParameters();
+			joint->scncp = SceneNodeParameters();
+			joint->jp = JointParameters();
+//			joint->converterJointParams = new JointParameters();
+
+			return joint;
 		}
 		default:
 			break;
@@ -304,7 +310,7 @@ SceneNode *ColladaConverter::processNode( DaeNode &node, SceneNode *parentNode,
 //			oNode->converterNodeParams->daeInstance = &node.instances[ validInsts[ 0 ] ];
 
 			oNode = createSceneNode( AvailableSceneNodeTypes::Mesh );
-			SceneNodeParameters *par = ( SceneNodeParameters * ) oNode->converterNodeParams;
+			SceneNodeParameters *par = &any_cast< SceneNodeParameters >( oNode->scncp );
 			par->daeInstance = &node.instances[validInsts[0]];
 		}
 	}
@@ -313,7 +319,7 @@ SceneNode *ColladaConverter::processNode( DaeNode &node, SceneNode *parentNode,
 	if( oNode != 0x0 )
 	{
 		oNode->parent = parentNode;
-		SceneNodeParameters *p = ( SceneNodeParameters * ) oNode->converterNodeParams;
+		SceneNodeParameters *p = &any_cast< SceneNodeParameters >( oNode->scncp );
 		p->daeNode = &node;
 //		oNode->converterNodeParams->daeNode = &node;
 		oNode->matRel = relMat;
@@ -344,11 +350,10 @@ SceneNode *ColladaConverter::processNode( DaeNode &node, SceneNode *parentNode,
 			SceneNode *oNode2 = createSceneNode( AvailableSceneNodeTypes::Mesh );
 			oNode->children.push_back( _meshes.back() );
 			
-			SceneNodeParameters *prm = ( SceneNodeParameters * ) oNode2->converterNodeParams;
-
 			*oNode2 = *oNode;
 			oNode2->typeJoint = false;
 			oNode2->matRel = Matrix4f();
+			SceneNodeParameters *prm = &any_cast< SceneNodeParameters >( oNode2->scncp );
 			prm->daeInstance = &node.instances[ validInsts[ 0 ] ];
 			// 			oNode2->daeInstance = &node.instances[validInsts[0]];
 			oNode2->parent = oNode;
@@ -364,9 +369,8 @@ SceneNode *ColladaConverter::processNode( DaeNode &node, SceneNode *parentNode,
 				SceneNode *oNode3 = createSceneNode( AvailableSceneNodeTypes::Mesh );
 				oNode2->children.push_back( _meshes.back() );
 
-				SceneNodeParameters *p = ( SceneNodeParameters * ) oNode3->converterNodeParams;
-
 				*oNode3 = *oNode2;
+				SceneNodeParameters *p = &any_cast< SceneNodeParameters >( oNode3->scncp );
 				p->daeInstance = &node.instances[ validInsts[ i ] ];
 // 				oNode3->daeInstance = &node.instances[validInsts[i]];
 				oNode3->parent = oNode2;
@@ -382,11 +386,10 @@ SceneNode *ColladaConverter::processNode( DaeNode &node, SceneNode *parentNode,
 				SceneNode *oNode2 = createSceneNode( AvailableSceneNodeTypes::Mesh );
 				oNode->children.push_back( _meshes.back() );
 
-				SceneNodeParameters *p = ( SceneNodeParameters * ) oNode2->converterNodeParams;
-
 				*oNode2 = *oNode;
 				oNode2->matRel = Matrix4f();
 // 				oNode2->daeInstance = &node.instances[validInsts[i]];
+				SceneNodeParameters *p = &any_cast< SceneNodeParameters >( oNode2->scncp );
 				p->daeInstance = &node.instances[ validInsts[ i ] ];
 				oNode2->parent = oNode;
 				oNode2->children.clear();
@@ -462,10 +465,10 @@ void ColladaConverter::calcTangentSpaceBasis( vector<Vertex> &verts ) const
 					verts[_indices[k + l]].bitangent += vDir;
 
 					// Handle texture seams where vertices were split
-// 					VertexParameters *vParams = ( VertexParameters * ) verts[ _indices[ k + l ] ].converterVertexParams;
+ 					VertexParameters *vParams = &any_cast< VertexParameters >( verts[ _indices[ k + l ] ].vp );
 					vector< unsigned int > &vertList = 
-// 						triGroup->posIndexToVertices[ vParams->daePosIndex ];
-						triGroup->posIndexToVertices[verts[_indices[k + l]].daePosIndex];
+ 						triGroup->posIndexToVertices[ vParams->daePosIndex ];
+//						triGroup->posIndexToVertices[verts[_indices[k + l]].daePosIndex];
 					for( unsigned int m = 0; m < vertList.size(); ++m )
 					{
 						if( vertList[m] != _indices[k + l] &&
@@ -544,7 +547,7 @@ void ColladaConverter::processMeshes( bool optimize )
 		}
 		
 		// Find geometry/controller for node
-		SceneNodeParameters *meshParams = ( SceneNodeParameters * ) _meshes[ i ]->converterNodeParams;
+		SceneNodeParameters *meshParams = &any_cast< SceneNodeParameters >( _meshes[ i ]->scncp );
 		string id = meshParams->daeInstance->url; // _meshes[i]->daeInstance->url;
 		
 		DaeSkin *skin = _daeDoc.libControllers.findSkin( id );
@@ -590,7 +593,7 @@ void ColladaConverter::processMeshes( bool optimize )
 				bool found = false;
 				for( unsigned int k = 0; k < _joints.size(); ++k )
 				{
-					SceneNodeParameters *jparams = ( SceneNodeParameters * ) _joints[ k ]->converterNodeParams;
+					SceneNodeParameters *jparams = &any_cast< SceneNodeParameters >( _joints[ k ]->scncp );
 //					if( _joints[k]->daeNode->sid == sid )
 					if ( jparams->daeNode->sid == sid )
 					{
@@ -612,7 +615,7 @@ void ColladaConverter::processMeshes( bool optimize )
 			{
 				if( jointLookup[j] != 0x0 )
 				{
-					JointParameters *jprm = ( JointParameters * ) jointLookup[ j ]->converterJointParams;
+					JointParameters *jprm = &any_cast< JointParameters >( jointLookup[ j ]->jp );
 					jointLookup[j]->used = true;
 					
 //					jointLookup[j]->daeInvBindMat =
@@ -685,15 +688,15 @@ void ColladaConverter::processMeshes( bool optimize )
 				else
 				{
 					Vertex v;
-// 					VertexParameters *vp = new VertexParameters();
-// 					v.converterVertexParams = vp;
+					v.vp = VertexParameters();
+					auto vp = &any_cast< VertexParameters >( v.vp );
 
-//					vp->daePosIndex = iTriGroup.indices[ k ].posIndex;
-					v.daePosIndex = iTriGroup.indices[k].posIndex;
+					vp->daePosIndex = iTriGroup.indices[ k ].posIndex;
+//					v.daePosIndex = iTriGroup.indices[k].posIndex;
 					int normIndex = iTriGroup.indices[k].normIndex;
 
 					// Position
-					v.storedPos = iTriGroup.getPos( /*vp->daePosIndex*/ v.daePosIndex );
+					v.storedPos = iTriGroup.getPos( vp->daePosIndex /*v.daePosIndex*/ );
 					v.pos = v.storedPos;
 					if( !_daeDoc.y_up )
 					{	
@@ -711,9 +714,9 @@ void ColladaConverter::processMeshes( bool optimize )
 					v.storedNormal = iTriGroup.getNormal( normIndex );
 
 					// Skinning
-					if( skin != 0x0 && v.daePosIndex /*vp->daePosIndex*/ < (int)skin->vertWeights.size() )
+					if( skin != 0x0 && /*v.daePosIndex*/ vp->daePosIndex < (int)skin->vertWeights.size() )
 					{
-						DaeVertWeights vertWeights = skin->vertWeights[v.daePosIndex /*vp->daePosIndex*/ ];
+						DaeVertWeights vertWeights = skin->vertWeights[/*v.daePosIndex*/ vp->daePosIndex ];
 						
 						// Sort weights
 						for( unsigned int xx = 0; xx < vertWeights.size(); ++xx )
@@ -757,26 +760,26 @@ void ColladaConverter::processMeshes( bool optimize )
 							Vec3f newPos( 0, 0, 0 );
 							if ( v.joints[ 0 ] != 0x0 )
 							{
-								JointParameters *vJointParams = ( JointParameters * ) v.joints[ 0 ]->converterJointParams;
+								JointParameters *vJointParams = &any_cast< JointParameters >( v.joints[ 0 ]->jp );
 //								newPos += v.joints[ 0 ]->matAbs * v.joints[ 0 ]->daeInvBindMat * v.pos * v.weights[ 0 ];
 								newPos += v.joints[ 0 ]->matAbs * vJointParams->daeInvBindMat * v.pos * v.weights[ 0 ];
 
 							}
 							if ( v.joints[ 1 ] != 0x0 )
 							{
-								JointParameters *vJointParams = ( JointParameters * ) v.joints[ 1 ]->converterJointParams;
+								JointParameters *vJointParams = &any_cast< JointParameters >( v.joints[ 1 ]->jp );
 // 								newPos += v.joints[ 1 ]->matAbs * v.joints[ 1 ]->daeInvBindMat * v.pos * v.weights[ 1 ];
 								newPos += v.joints[ 1 ]->matAbs * vJointParams->daeInvBindMat * v.pos * v.weights[ 1 ];
 							}
 							if ( v.joints[ 2 ] != 0x0 )
 							{
-								JointParameters *vJointParams = ( JointParameters * ) v.joints[ 2 ]->converterJointParams;
+								JointParameters *vJointParams = &any_cast< JointParameters >( v.joints[ 2 ]->jp );
 //								newPos += v.joints[ 2 ]->matAbs * v.joints[ 2 ]->daeInvBindMat * v.pos * v.weights[ 2 ];
 								newPos += v.joints[ 2 ]->matAbs * vJointParams->daeInvBindMat * v.pos * v.weights[ 2 ];
 							}
 							if ( v.joints[ 3 ] != 0x0 )
 							{
-								JointParameters *vJointParams = ( JointParameters * ) v.joints[ 3 ]->converterJointParams;
+								JointParameters *vJointParams = &any_cast< JointParameters >( v.joints[ 3 ]->jp );
 //								newPos += v.joints[ 3 ]->matAbs * v.joints[ 3 ]->daeInvBindMat * v.pos * v.weights[ 3 ];
 								newPos += v.joints[ 3 ]->matAbs * vJointParams->daeInvBindMat * v.pos * v.weights[ 3 ];
 							}
@@ -852,10 +855,10 @@ void ColladaConverter::processMeshes( bool optimize )
 				for( unsigned int k = 0; k < numGeoVerts; ++k )
 				{
 					Vertex &v = _vertices[firstGeoVert + k];
-// 					VertexParameters *vp = ( VertexParameters * ) v.converterVertexParams;
+ 					VertexParameters *vp = &any_cast< VertexParameters >( v.vp );
 
-					Vec3f basePos = geo->getPos( /*vp->daePosIndex*/ v.daePosIndex  );
-					Vec3f targetPos = targetGeo->getPos( /*vp->daePosIndex*/ v.daePosIndex );
+					Vec3f basePos = geo->getPos( vp->daePosIndex /*v.daePosIndex*/  );
+					Vec3f targetPos = targetGeo->getPos( vp->daePosIndex /*v.daePosIndex*/ );
 					
 					if( targetPos != basePos )
 					{
@@ -871,25 +874,25 @@ void ColladaConverter::processMeshes( bool optimize )
 							Vec3f newPos( 0, 0, 0 );
 							if ( v.joints[ 0 ] != 0x0 )
 							{
-								JointParameters *vJointParams = ( JointParameters * ) v.joints[ 0 ]->converterJointParams;
+								JointParameters *vJointParams = &any_cast< JointParameters >( v.joints[ 0 ]->jp );
 								newPos += v.joints[ 0 ]->matAbs * vJointParams->daeInvBindMat * targetPos * v.weights[ 0 ];
 //								newPos += v.joints[ 0 ]->matAbs * v.joints[ 0 ]->daeInvBindMat * targetPos * v.weights[ 0 ];
 							}
 							if ( v.joints[ 1 ] != 0x0 )
 							{
-								JointParameters *vJointParams = ( JointParameters * ) v.joints[ 1 ]->converterJointParams;
+								JointParameters *vJointParams = &any_cast< JointParameters >( v.joints[ 1 ]->jp );
 								newPos += v.joints[ 1 ]->matAbs * vJointParams->daeInvBindMat * targetPos * v.weights[ 1 ];
 //								newPos += v.joints[ 1 ]->matAbs * v.joints[ 1 ]->daeInvBindMat * targetPos * v.weights[ 1 ];
 							}
 							if ( v.joints[ 2 ] != 0x0 )
 							{
-								JointParameters *vJointParams = ( JointParameters * ) v.joints[ 2 ]->converterJointParams;
+								JointParameters *vJointParams = &any_cast< JointParameters >( v.joints[ 2 ]->jp );
 								newPos += v.joints[ 2 ]->matAbs * vJointParams->daeInvBindMat * targetPos * v.weights[ 2 ];
 //								newPos += v.joints[ 2 ]->matAbs * v.joints[ 2 ]->daeInvBindMat * targetPos * v.weights[ 2 ];
 							}
 							if ( v.joints[ 3 ] != 0x0 )
 							{
-								JointParameters *vJointParams = ( JointParameters * ) v.joints[ 3 ]->converterJointParams;
+								JointParameters *vJointParams = &any_cast< JointParameters >( v.joints[ 3 ]->jp );
 								newPos += v.joints[ 3 ]->matAbs * vJointParams->daeInvBindMat * targetPos * v.weights[ 3 ];
 //								newPos += v.joints[ 3 ]->matAbs * v.joints[ 3 ]->daeInvBindMat * targetPos * v.weights[ 3 ];
 							}
