@@ -11,7 +11,7 @@
 // *************************************************************************************************
 
 #include "optimizer.h"
-#include "converter.h"
+#include "converterCommon.h"
 #include "utPlatform.h"
 #include <list>
 #include <algorithm>
