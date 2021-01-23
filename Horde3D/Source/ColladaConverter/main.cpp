@@ -11,7 +11,8 @@
 // *************************************************************************************************
 
 #include "daeMain.h"
-#include "converter.h"
+#include "colladaConverter.h"
+#include "gltfConverter.h"
 #include "utPlatform.h"
 #include <algorithm>
 #include <memory>
@@ -186,6 +187,36 @@ void printHelp()
 	log( "-lodDist4 dist    distance for LOD4" );
 }
 
+bool convert( IConverter *cvt, const ConverterParameters &params )
+{
+	if ( params.assetType == AssetTypes::Model )
+	{
+		log( "Compiling model data..." );
+		cvt->convertModel( params.optimizeGeometry );
+
+		createDirectories( params.outPath, params.assetPath );
+		cvt->writeModel( params.assetPath, params.assetName, params.modelName );
+		cvt->writeMaterials( params.assetPath, params.modelName, params.overwriteMats );
+	}
+	else if ( params.assetType == AssetTypes::Animation )
+	{
+		log( "Compiling animation data..." );
+		cvt->convertModel( false );
+
+		if ( cvt->hasAnimation() )
+		{
+			createDirectories( params.outPath, params.assetPath );
+			cvt->writeAnimation( params.assetPath, params.assetName );
+		}
+		else
+		{
+			log( "Skipping file (does not contain animation data)" );
+		}
+	}
+
+	return true;
+}
+
 bool parseColladaFile( const Asset &asset, const ConverterParameters &params )
 {
 	std::unique_ptr< ColladaDocument > daeDoc = std::unique_ptr< ColladaDocument >( new ColladaDocument() ); // make_unique not available in c++11
@@ -194,36 +225,40 @@ bool parseColladaFile( const Asset &asset, const ConverterParameters &params )
 	if ( !daeDoc->parseFile( params.sourcePath ) )
 		return false;
 
-	if ( params.assetType == AssetTypes::Model )
-	{
-		log( "Compiling model data..." );
-		Converter *converter = new Converter( *daeDoc, params.outPath, params.lodDists );
-		converter->convertModel( params.optimizeGeometry );
+	auto cvt = std::unique_ptr< ColladaConverterNS::ColladaConverter >( new ColladaConverterNS::ColladaConverter( *daeDoc, params.outPath, params.lodDists ) );
 
-		createDirectories( params.outPath, params.assetPath );
-		converter->writeModel( params.assetPath, params.assetName, params.modelName );
-		converter->writeMaterials( params.assetPath, params.modelName, params.overwriteMats );
+	return convert( cvt.get(), params );
 
-		delete converter; converter = 0x0;
-	}
-	else if ( params.assetType == AssetTypes::Animation )
-	{
-		log( "Compiling animation data..." );
-		Converter *converter = new Converter( *daeDoc, params.outPath, params.lodDists );
-		converter->convertModel( false );
-
-		if ( converter->hasAnimation() )
-		{
-			createDirectories( params.outPath, params.assetPath );
-			converter->writeAnimation( params.assetPath, params.assetName );
-		}
-		else
-		{
-			log( "Skipping file (does not contain animation data)" );
-		}
-
-		delete converter; converter = 0x0;
-	}
+// 	if ( params.assetType == AssetTypes::Model )
+// 	{
+// 		log( "Compiling model data..." );
+// 		ColladaConverterNS::ColladaConverter *converter = new ColladaConverterNS::ColladaConverter( *daeDoc, params.outPath, params.lodDists );
+// 		converter->convertModel( params.optimizeGeometry );
+// 
+// 		createDirectories( params.outPath, params.assetPath );
+// 		converter->writeModel( params.assetPath, params.assetName, params.modelName );
+// 		converter->writeMaterials( params.assetPath, params.modelName, params.overwriteMats );
+// 
+// 		delete converter; converter = 0x0;
+// 	}
+// 	else if ( params.assetType == AssetTypes::Animation )
+// 	{
+// 		log( "Compiling animation data..." );
+// 		ColladaConverterNS::ColladaConverter *converter = new ColladaConverterNS::ColladaConverter( *daeDoc, params.outPath, params.lodDists );
+// 		converter->convertModel( false );
+// 
+// 		if ( converter->hasAnimation() )
+// 		{
+// 			createDirectories( params.outPath, params.assetPath );
+// 			converter->writeAnimation( params.assetPath, params.assetName );
+// 		}
+// 		else
+// 		{
+// 			log( "Skipping file (does not contain animation data)" );
+// 		}
+// 
+// 		delete converter; converter = 0x0;
+// 	}
 
 // 	delete daeDoc; daeDoc = 0x0;
 	return true;
@@ -234,9 +269,33 @@ bool parseFBXFile( const Asset &asset )
 	return true;
 }
 
-bool parseGLTFFile( const Asset &asset )
+bool parseGLTFFile( const Asset &asset, const ConverterParameters &params )
 {
-	return true;
+	tinygltf::Model model;
+	std::string err;
+	std::string warn;
+	bool result = true;
+
+	if ( extractFileExtension( asset.path ).compare( "glb" ) == 0 )
+	{
+		// binary file
+		log( "Parsing binary gltf asset '" + asset.path + "'..." );
+		result = readGLTFModel( model, true, params.sourcePath, err, warn );
+	}
+	else
+	{
+		// text file
+		log( "Parsing text gltf asset '" + asset.path + "'..." );
+		result = readGLTFModel( model, false, params.sourcePath, err, warn );
+	}
+
+	if ( !warn.empty() ) log( "GLTF warnings: " + warn );
+	if ( !err.empty() ) log( "GLTF errors: " + err );
+	if ( !result ) return false;
+
+	auto cvt = std::unique_ptr< GLTFConverter >( new GLTFConverter( model, params.outPath, params.lodDists ) );
+	
+	return convert( cvt.get(), params);
 }
 
 int main( int argc, char **argv )
@@ -368,6 +427,7 @@ int main( int argc, char **argv )
 	cvParams.overwriteMats = overwriteMats;
 	memcpy( &cvParams.lodDists, &lodDists, sizeof( float ) * 4 );
 	cvParams.outPath = outPath;
+	cvParams.assetType = assetType;
 
 	for( unsigned int i = 0; i < assetList.size(); ++i )
 	{
@@ -392,7 +452,7 @@ int main( int argc, char **argv )
 					result = parseFBXFile( assetList[ i ] );
 					break;
 				case SupportedFormats::GLTF:
-					result = parseGLTFFile( assetList[ i ] );
+					result = parseGLTFFile( assetList[ i ], cvParams );
 					break;
 				default:
 					break;
