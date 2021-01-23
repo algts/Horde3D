@@ -201,16 +201,22 @@ public:
 
 protected:
 	virtual SceneNode *createSceneNode( AvailableSceneNodeTypes type ) = 0;
+	void processSceneNode( SceneNode *node, SceneNode *parentNode, std::string &name, Matrix4f &m );
 
 	void calcTangentSpaceBasis( std::vector<Vertex> &verts ) const;
 
-	bool writeGeometry( const std::string &assetPath, const std::string &assetName ) const;
+	SceneNode *findNode( const char *name, SceneNode *ignoredNode );
+	void checkNodeName( SceneNode *node );
 
+	void processJoints();
+
+	bool writeGeometry( const std::string &assetPath, const std::string &assetName ) const;
 	void writeSGNode( const std::string &assetPath, const std::string &modelName, SceneNode *node, unsigned int depth, std::ofstream &outf ) const;
 	bool writeSceneGraph( const std::string &assetPath, const std::string &assetName, const std::string &modelName ) const;
 	bool writeMaterial( const Material &mat, bool replace ) const;
-	void writeAnimFrames( SceneNode &node, FILE *f ) const;
+	bool writeModelCommon( const std::string &assetPath, const std::string &assetName, const std::string &modelName ) const;
 
+	void writeAnimFrames( SceneNode &node, FILE *f ) const;
 	bool writeAnimationCommon( const std::string &assetPath, const std::string &assetName ) const;
 protected:
 

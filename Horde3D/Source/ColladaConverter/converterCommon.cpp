@@ -14,6 +14,27 @@ namespace AssetConverter {
 
 using namespace std;
 
+void IConverter::processSceneNode( SceneNode *node, SceneNode *parentNode, std::string &name, Matrix4f &m )
+{
+	node->parent = parentNode;
+	node->matRel = m;
+
+	// Name
+	if ( name.length() > 255 )
+	{
+		log( "Warning: node name is too long" );
+		name.erase( 255, name.length() - 255 );
+	}
+	strcpy( node->name, name.c_str() );
+
+	// Check for duplicate node name
+	checkNodeName( node );
+
+	// Calculate absolute transformation
+	if ( parentNode != 0x0 ) node->matAbs = parentNode->matAbs * node->matRel;
+	else node->matAbs = node->matRel;
+}
+
 // void IConverter::calcTangentSpaceBasis( vector<Vertex> &verts ) const
 // {
 // 	for ( unsigned int i = 0; i < verts.size(); ++i )
@@ -95,6 +116,67 @@ using namespace std;
 // 		log( "   Maybe two faces point in opposite directions and share same vertices" );
 // 	}
 // }
+
+
+SceneNode *IConverter::findNode( const char *name, SceneNode *ignoredNode )
+{
+	for ( size_t i = 0, s = _joints.size(); i < s; ++i )
+	{
+		if ( _joints[ i ] != ignoredNode && strcmp( _joints[ i ]->name, name ) == 0 )
+			return _joints[ i ];
+	}
+
+	for ( size_t i = 0, s = _meshes.size(); i < s; ++i )
+	{
+		if ( _meshes[ i ] != ignoredNode && strcmp( _meshes[ i ]->name, name ) == 0 )
+			return _meshes[ i ];
+	}
+
+	return 0x0;
+}
+
+
+void IConverter::checkNodeName( SceneNode *node )
+{
+	// Check if a different node with the same name exists
+	if ( findNode( node->name, node ) != 0x0 )
+	{
+		// If necessary, cut name to make room for the postfix
+		if ( strlen( node->name ) > 240 ) node->name[ 240 ] = '\0';
+
+		char newName[ 512 ];
+		unsigned int index = 2;
+
+		// Find a free name
+		while ( true )
+		{
+			snprintf( newName, sizeof( newName ), "%s_%i", node->name, index++ );
+
+			if ( !findNode( newName, node ) )
+			{
+				char msg[ 1024 ];
+				sprintf( msg, "Warning: Node with name '%s' already exists. "
+					"Node was renamed to '%s'.", node->name, newName );
+				log( msg );
+
+				strcpy( node->name, newName );
+				break;
+			}
+		}
+	}
+}
+
+void IConverter::processJoints()
+{
+	for ( unsigned int i = 0; i < _joints.size(); ++i )
+	{
+		_joints[ i ]->index = i + 1;	// First index is identity matrix
+		_joints[ i ]->invBindMat = _joints[ i ]->matAbs.inverted();
+	}
+
+	if ( _joints.size() + 1 > 75 ) log( "Warning: Model has more than 75 joints. It may render incorrectly if used with OpenGL 2 render backend." );
+	if ( _joints.size() + 1 > 330 ) log( "Warning: Model has more than 330 joints. Currently it is not supported." );
+}
 
 bool IConverter::writeGeometry( const string &assetPath, const string &assetName ) const
 {
@@ -527,6 +609,17 @@ bool IConverter::writeMaterial( const Material &mat, bool replace ) const
 	outf.close();
 
 	return true;
+}
+
+
+bool IConverter::writeModelCommon( const std::string &assetPath, const std::string &assetName, const std::string &modelName ) const
+{
+	bool result = true;
+
+	if ( !writeGeometry( assetPath, assetName ) ) result = false;
+	if ( !writeSceneGraph( assetPath, assetName, modelName ) ) result = false;
+
+	return result;
 }
 
 
