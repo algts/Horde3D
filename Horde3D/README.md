@@ -14,6 +14,9 @@ The source code of the engine and tools is included in the SDK. It has the follo
 
  * **RapidXml**: http://rapidxml.sourceforge.net
  * **stbi** by Sean Barrett: http://nothings.org
+ * **tiny_gltf** for gltf format support in Asset converter: https://github.com/syoyo/tinygltf
+ * **static_any** container used in Asset converter: https://github.com/david-grs/static_any
+ * **OpenFBX** for fbx format support in Asset converter: https://github.com/nem0/OpenFBX
  * **GLFW** for window management in samples: https://glfw.org
  * **SDL** - alternative window management library for samples: https://libsdl.org
 		
