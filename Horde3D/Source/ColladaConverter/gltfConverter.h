@@ -6,6 +6,24 @@
 namespace Horde3D {
 namespace AssetConverter {
 
+// Type of processed node
+enum class GLTFNodeType
+{
+	Transformation,
+	Mesh,
+	Joint
+};
+
+enum class GLTFDataType
+{
+	VertexPosition,
+	VertexRotation,
+	VertexScale,
+	AnimationPosition,
+	AnimationRotation,
+	AnimationScale
+};
+
 // Reader function	
 bool readGLTFModel( tinygltf::Model &mdl, bool binary, const std::string &pathToFile, std::string &errors, std::string &warnings );
 
@@ -31,10 +49,21 @@ public:
 	bool writeAnimation( const std::string &assetPath, const std::string &assetName ) const override;
 
 
-	SceneNode * createSceneNode( AvailableSceneNodeTypes type ) override
-	{
-		throw std::logic_error( "The method or operation is not implemented." );
-	}
+	SceneNode * createSceneNode( AvailableSceneNodeTypes type ) override;
+
+protected:
+	size_t getAnimationFrameCount();
+	Matrix4f getNodeTransform( tinygltf::Node &node, int nodeId, unsigned int frame );
+	static_any< 32 > getNodeData( GLTFDataType type, int nodeId );
+
+	GLTFNodeType validateInstance( const tinygltf::Node &node, int nodeId );
+
+	SceneNode *processNode( tinygltf::Node &node, int nodeId, SceneNode *parentNode,
+							Matrix4f transAccum, std::vector< Matrix4f > animTransAccum );
+
+	void processMeshes( bool optimize );
+
+	void processMaterials();
 
 private:
 
