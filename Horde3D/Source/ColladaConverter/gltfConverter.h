@@ -16,13 +16,40 @@ enum class GLTFNodeType
 
 enum class GLTFDataType
 {
+	VertexID,
 	VertexPosition,
 	VertexRotation,
 	VertexScale,
+	TextureCoordinates,
+	Normal,
 	AnimationPosition,
 	AnimationRotation,
 	AnimationScale
 };
+
+struct VertexParameters
+{
+	int gltfPosIndex = 0;
+};
+
+struct SceneNodeParameters
+{
+	int nodeID = -1;
+	int meshID = -1;
+	int skinID = -1;
+	
+	bool morphTargets = false;
+};
+
+struct MeshParameters
+{
+	
+};
+// struct JointParameters
+// {
+// 	// Temporary
+// 	Matrix4f      daeInvBindMat;
+// };
 
 // Reader function	
 bool readGLTFModel( tinygltf::Model &mdl, bool binary, const std::string &pathToFile, std::string &errors, std::string &warnings );
@@ -52,15 +79,20 @@ public:
 	SceneNode * createSceneNode( AvailableSceneNodeTypes type ) override;
 
 protected:
-	size_t getAnimationFrameCount();
+	size_t getAnimationTotalFrameCount();
+	size_t getAnimationFrameCount( int animIndex, int nodeID );
 	Matrix4f getNodeTransform( tinygltf::Node &node, int nodeId, unsigned int frame );
-	static_any< 32 > getNodeData( GLTFDataType type, int nodeId );
+
+	int findAnimationIndex( tinygltf::Model &model, int nodeId );
+
+	static_any< 32 > getNodeData( GLTFDataType type, int nodeId, int index );
 
 	GLTFNodeType validateInstance( const tinygltf::Node &node, int nodeId );
 
 	SceneNode *processNode( tinygltf::Node &node, int nodeId, SceneNode *parentNode,
 							Matrix4f transAccum, std::vector< Matrix4f > animTransAccum );
 
+	void processTriGroup( tinygltf::Mesh *geo, unsigned int geoTriGroupIndex, SceneNodeParameters *meshParams, int skinID, std::vector<Joint *> &jointLookup, unsigned int i );
 	void processMeshes( bool optimize );
 
 	void processMaterials();
@@ -68,6 +100,8 @@ protected:
 private:
 
 	tinygltf::Model _model;
+
+	bool			_splitAnimations;
 };
 
 } // namespace AssetConverter
