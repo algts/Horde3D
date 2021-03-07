@@ -1,9 +1,11 @@
 include_directories(../Shared)
 
-# Do not build collada converter for ios or android
+# Do not build asset converter for ios or android
 if( (NOT ${CMAKE_SYSTEM_NAME} MATCHES "iOS") AND (NOT ${CMAKE_SYSTEM_NAME} MATCHES "Android") )
-add_executable(ColladaConv 
-	converter.h
+add_executable(AssetConv 
+	converterCommon.h
+	gltfConverter.h
+	colladaConverter.h
 	daeCommon.h
 	daeLibAnimations.h
 	daeLibControllers.h
@@ -12,11 +14,13 @@ add_executable(ColladaConv
 	daeLibImages.h
 	daeLibMaterials.h
 	daeLibVisualScenes.h
-	tiny_gltf.h
+	gltf/tiny_gltf.h
 	daeMain.h
 	optimizer.h
 	utils.h
-	converter.cpp
+	converterCommon.cpp
+	colladaConverter.cpp
+	gltfConverter.cpp
 	daeMain.cpp
 	main.cpp
 	optimizer.cpp
