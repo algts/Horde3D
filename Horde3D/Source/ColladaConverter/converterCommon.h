@@ -110,6 +110,11 @@ struct Material
 	std::string shininess;
 };
 
+struct Animation
+{
+	char name[ 256 ] = { 0 };
+	std::vector< Matrix4f >     frames;  // Relative transformation for every frame
+};
 
 struct SceneNode
 {
@@ -120,6 +125,7 @@ struct SceneNode
 
 	// Animation
 	std::vector< Matrix4f >     frames;  // Relative transformation for every frame
+	std::vector< Animation >	animations;
 
 	// Scene node parameters, used by specific converter
 	static_any< SCENENODE_PARAMETERS_SIZE > scncp;

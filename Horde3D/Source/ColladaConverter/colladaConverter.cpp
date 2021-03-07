@@ -262,6 +262,54 @@ bool ColladaConverter::validateInstance( const std::string &instanceId ) const
 }
 
 
+void ColladaConverter::buildSkinLookupTable( DaeSkin * skin, vector<Joint *> &jointLookup )
+{
+	// Build lookup table
+	for ( unsigned int j = 0; j < skin->jointArray->stringArray.size(); ++j )
+	{
+		string sid = skin->jointArray->stringArray[ j ];
+
+		jointLookup.push_back( 0x0 );
+
+		bool found = false;
+		for ( unsigned int k = 0; k < _joints.size(); ++k )
+		{
+			SceneNodeParameters *jparams = &any_cast< SceneNodeParameters >( _joints[ k ]->scncp );
+			//					if( _joints[k]->daeNode->sid == sid )
+			if ( jparams->daeNode->sid == sid )
+			{
+				jointLookup[ j ] = _joints[ k ];
+				found = true;
+				break;
+			}
+		}
+
+		if ( !found )
+		{
+			log( "Warning: joint '" + sid + "' used in skin controller not found" );
+		}
+	}
+
+	// Find bind matrices
+	Matrix4f bindShapeMat = makeMatrix4f( &skin->bindShapeMat[ 0 ], _daeDoc.y_up );
+	for ( unsigned int j = 0; j < skin->jointArray->stringArray.size(); ++j )
+	{
+		if ( jointLookup[ j ] != 0x0 )
+		{
+			JointParameters *jprm = &any_cast< JointParameters >( jointLookup[ j ]->jp );
+			jointLookup[ j ]->used = true;
+
+			//					jointLookup[j]->daeInvBindMat =
+			jprm->daeInvBindMat =
+				makeMatrix4f( &skin->bindMatArray->floatArray[ j * 16 ], _daeDoc.y_up );
+
+			// Multiply bind matrices with bind shape matrix
+			jprm->daeInvBindMat = jprm->daeInvBindMat * bindShapeMat;
+		}
+	}
+}
+
+
 SceneNode *ColladaConverter::processNode( DaeNode &node, SceneNode *parentNode,
                                    Matrix4f transAccum, vector< Matrix4f > animTransAccum )
 {
@@ -527,6 +575,287 @@ void ColladaConverter::calcTangentSpaceBasis( vector<Vertex> &verts ) const
 // }
 
 
+void ColladaConverter::processTriGroup( DaeGeometry * geo, unsigned int geoTriGroupIndex, SceneNodeParameters * meshParams, DaeSkin * skin, std::vector<Joint *> &jointLookup, unsigned int i )
+{
+	DaeTriGroup &iTriGroup = geo->triGroups[ geoTriGroupIndex ];
+	TriGroup* oTriGroup = new TriGroup();
+
+	DaeMaterial *mat = _daeDoc.libMaterials.findMaterial(
+		meshParams->daeInstance->materialBindings[ iTriGroup.matId ] );
+	// 				_meshes[i]->daeInstance->materialBindings[iTriGroup.matId] );
+	if ( mat != 0x0 )
+	{
+		oTriGroup->matName = mat->name;
+		mat->used = true;
+	}
+	else
+		log( "Warning: Material '" + oTriGroup->matName + "' not found" );
+
+	oTriGroup->first = ( unsigned int ) _indices.size();
+	oTriGroup->count = ( unsigned int ) iTriGroup.indices.size();
+	oTriGroup->vertRStart = ( unsigned int ) _vertices.size();
+
+	// Add indices and vertices
+	oTriGroup->numPosIndices = ( unsigned int ) iTriGroup.vSource->posSource->floatArray.size() /
+		iTriGroup.vSource->posSource->paramsPerItem;
+	oTriGroup->posIndexToVertices = new vector< unsigned int >[ oTriGroup->numPosIndices ];
+
+	for ( unsigned int k = 0; k < iTriGroup.indices.size(); ++k )
+	{
+		// Try to find vertex
+		vector< unsigned int > &vertList = oTriGroup->posIndexToVertices[ iTriGroup.indices[ k ].posIndex ];
+		bool found = false;
+		unsigned int index = ( unsigned int ) _vertices.size();
+
+		// Only check vertices that have the same Collada position index
+		for ( unsigned int l = 0; l < vertList.size(); ++l )
+		{
+			Vertex &v = _vertices[ vertList[ l ] ];
+
+			if ( v.storedPos == iTriGroup.getPos( iTriGroup.indices[ k ].posIndex ) &&
+				v.storedNormal == iTriGroup.getNormal( iTriGroup.indices[ k ].normIndex ) &&
+				v.texCoords[ 0 ] == iTriGroup.getTexCoords( iTriGroup.indices[ k ].texIndex[ 0 ], 0 ) &&
+				v.texCoords[ 1 ] == iTriGroup.getTexCoords( iTriGroup.indices[ k ].texIndex[ 1 ], 1 ) &&
+				v.texCoords[ 2 ] == iTriGroup.getTexCoords( iTriGroup.indices[ k ].texIndex[ 2 ], 2 ) &&
+				v.texCoords[ 3 ] == iTriGroup.getTexCoords( iTriGroup.indices[ k ].texIndex[ 3 ], 3 ) )
+
+			{
+				found = true;
+				index = vertList[ l ];
+				break;
+			}
+		}
+
+		if ( found )
+		{
+			_indices.push_back( index );
+		}
+		else
+		{
+			Vertex v;
+			v.vp = VertexParameters();
+			auto vp = &any_cast< VertexParameters >( v.vp );
+
+			vp->daePosIndex = iTriGroup.indices[ k ].posIndex;
+			//					v.daePosIndex = iTriGroup.indices[k].posIndex;
+			int normIndex = iTriGroup.indices[ k ].normIndex;
+
+			// Position
+			v.storedPos = iTriGroup.getPos( vp->daePosIndex /*v.daePosIndex*/ );
+			v.pos = v.storedPos;
+			if ( !_daeDoc.y_up )
+			{
+				swap( v.pos.y, v.pos.z );
+				v.pos.z *= -1;
+			}
+
+			// Texture coordinates
+			v.texCoords[ 0 ] = iTriGroup.getTexCoords( iTriGroup.indices[ k ].texIndex[ 0 ], 0 );
+			v.texCoords[ 1 ] = iTriGroup.getTexCoords( iTriGroup.indices[ k ].texIndex[ 1 ], 1 );
+			v.texCoords[ 2 ] = iTriGroup.getTexCoords( iTriGroup.indices[ k ].texIndex[ 2 ], 2 );
+			v.texCoords[ 3 ] = iTriGroup.getTexCoords( iTriGroup.indices[ k ].texIndex[ 3 ], 3 );
+
+			// Normal
+			v.storedNormal = iTriGroup.getNormal( normIndex );
+
+			// Skinning
+			if ( skin != 0x0 && /*v.daePosIndex*/ vp->daePosIndex < ( int ) skin->vertWeights.size() )
+			{
+				DaeVertWeights vertWeights = skin->vertWeights[/*v.daePosIndex*/ vp->daePosIndex ];
+
+				// Sort weights
+				for ( unsigned int xx = 0; xx < vertWeights.size(); ++xx )
+				{
+					for ( unsigned int yy = 0; yy < xx; ++yy )
+					{
+						if ( skin->weightArray->floatArray[ ( int ) vertWeights[ xx ].weight ] >
+							skin->weightArray->floatArray[ ( int ) vertWeights[ yy ].weight ] )
+						{
+							swap( vertWeights[ xx ], vertWeights[ yy ] );
+						}
+					}
+				}
+
+				// Take the four most significant weights
+				for ( unsigned int l = 0; l < vertWeights.size(); ++l )
+				{
+					if ( l == 4 ) break;
+					v.weights[ l ] = skin->weightArray->floatArray[ vertWeights[ l ].weight ];
+					v.joints[ l ] = jointLookup[ vertWeights[ l ].joint ];
+				}
+
+				// Normalize weights
+				float weightSum = v.weights[ 0 ] + v.weights[ 1 ] + v.weights[ 2 ] + v.weights[ 3 ];
+				if ( weightSum > Math::Epsilon )
+				{
+					v.weights[ 0 ] /= weightSum;
+					v.weights[ 1 ] /= weightSum;
+					v.weights[ 2 ] /= weightSum;
+					v.weights[ 3 ] /= weightSum;
+				}
+				else
+				{
+					v.weights[ 0 ] = 1.0f;
+					v.weights[ 1 ] = v.weights[ 2 ] = v.weights[ 3 ] = 0.0f;
+				}
+
+				// Apply skinning to vertex
+				if ( v.joints[ 0 ] != 0x0 || v.joints[ 1 ] != 0x0 || v.joints[ 2 ] != 0x0 || v.joints[ 3 ] != 0x0 )
+				{
+					Vec3f newPos( 0, 0, 0 );
+					if ( v.joints[ 0 ] != 0x0 )
+					{
+						JointParameters *vJointParams = &any_cast< JointParameters >( v.joints[ 0 ]->jp );
+						//								newPos += v.joints[ 0 ]->matAbs * v.joints[ 0 ]->daeInvBindMat * v.pos * v.weights[ 0 ];
+						newPos += v.joints[ 0 ]->matAbs * vJointParams->daeInvBindMat * v.pos * v.weights[ 0 ];
+
+					}
+					if ( v.joints[ 1 ] != 0x0 )
+					{
+						JointParameters *vJointParams = &any_cast< JointParameters >( v.joints[ 1 ]->jp );
+						// 								newPos += v.joints[ 1 ]->matAbs * v.joints[ 1 ]->daeInvBindMat * v.pos * v.weights[ 1 ];
+						newPos += v.joints[ 1 ]->matAbs * vJointParams->daeInvBindMat * v.pos * v.weights[ 1 ];
+					}
+					if ( v.joints[ 2 ] != 0x0 )
+					{
+						JointParameters *vJointParams = &any_cast< JointParameters >( v.joints[ 2 ]->jp );
+						//								newPos += v.joints[ 2 ]->matAbs * v.joints[ 2 ]->daeInvBindMat * v.pos * v.weights[ 2 ];
+						newPos += v.joints[ 2 ]->matAbs * vJointParams->daeInvBindMat * v.pos * v.weights[ 2 ];
+					}
+					if ( v.joints[ 3 ] != 0x0 )
+					{
+						JointParameters *vJointParams = &any_cast< JointParameters >( v.joints[ 3 ]->jp );
+						//								newPos += v.joints[ 3 ]->matAbs * v.joints[ 3 ]->daeInvBindMat * v.pos * v.weights[ 3 ];
+						newPos += v.joints[ 3 ]->matAbs * vJointParams->daeInvBindMat * v.pos * v.weights[ 3 ];
+					}
+					v.pos = newPos;
+				}
+			}
+
+			_vertices.emplace_back( v );
+			_indices.push_back( index );
+
+			vertList.push_back( ( unsigned int ) _vertices.size() - 1 );
+		}
+	}
+
+	oTriGroup->vertREnd = ( unsigned int ) _vertices.size() - 1;
+
+	// Remove degenerated triangles
+	unsigned int numDegTris = MeshOptimizer::removeDegeneratedTriangles( oTriGroup, _vertices, _indices );
+	if ( numDegTris > 0 )
+	{
+		stringstream ss;
+		ss << numDegTris;
+		log( "Removed " + ss.str() + " degenerated triangles from mesh " + meshParams->daeNode->id /*_meshes[i]->daeNode->id*/ );
+	}
+
+	_meshes[ i ]->triGroups.push_back( oTriGroup );
+}
+
+
+
+void ColladaConverter::processMorphTargets( DaeMorph *morpher, DaeGeometry *geo, unsigned int numGeoVerts, unsigned int firstGeoVert )
+{
+	for ( unsigned int j = 0; j < morpher->targetArray->stringArray.size(); ++j )
+	{
+		string targetId = morpher->targetArray->stringArray[ j ];
+		DaeGeometry *targetGeo = _daeDoc.libGeometries.findGeometry( targetId );
+		if ( targetGeo == 0x0 ) continue;
+
+		// Try to find morph target
+		int index = -1;
+		for ( unsigned int k = 0; k < _morphTargets.size(); ++k )
+		{
+			if ( targetId == _morphTargets[ k ].name )
+			{
+				index = k;
+				break;
+			}
+		}
+
+		// Add new morph target if not found
+		if ( index < 0 )
+		{
+			MorphTarget mt;
+
+			if ( targetGeo->name != "" )
+				strcpy( mt.name, targetGeo->name.c_str() );
+			else
+				strcpy( mt.name, targetId.c_str() );
+
+			_morphTargets.push_back( mt );
+			index = ( unsigned int ) _morphTargets.size() - 1;
+		}
+
+		// Loop over all vertices (Collada allows only exactly one vertex source per mesh)
+		if ( geo->vsources[ 0 ].posSource->floatArray.size() !=
+			targetGeo->vsources[ 0 ].posSource->floatArray.size() )
+		{
+			log( "Warning: morph target geometry differs from base geometry" );
+			continue;
+		}
+
+		for ( unsigned int k = 0; k < numGeoVerts; ++k )
+		{
+			Vertex &v = _vertices[ firstGeoVert + k ];
+			VertexParameters *vp = &any_cast< VertexParameters >( v.vp );
+
+			Vec3f basePos = geo->getPos( vp->daePosIndex /*v.daePosIndex*/ );
+			Vec3f targetPos = targetGeo->getPos( vp->daePosIndex /*v.daePosIndex*/ );
+
+			if ( targetPos != basePos )
+			{
+				if ( !_daeDoc.y_up )
+				{
+					swap( targetPos.y, targetPos.z );
+					targetPos.z *= -1;
+				}
+
+				// Apply skinning to morph target vertex
+				if ( v.joints[ 0 ] != 0x0 || v.joints[ 1 ] != 0x0 || v.joints[ 2 ] != 0x0 || v.joints[ 3 ] != 0x0 )
+				{
+					Vec3f newPos( 0, 0, 0 );
+					if ( v.joints[ 0 ] != 0x0 )
+					{
+						JointParameters *vJointParams = &any_cast< JointParameters >( v.joints[ 0 ]->jp );
+						newPos += v.joints[ 0 ]->matAbs * vJointParams->daeInvBindMat * targetPos * v.weights[ 0 ];
+						//								newPos += v.joints[ 0 ]->matAbs * v.joints[ 0 ]->daeInvBindMat * targetPos * v.weights[ 0 ];
+					}
+					if ( v.joints[ 1 ] != 0x0 )
+					{
+						JointParameters *vJointParams = &any_cast< JointParameters >( v.joints[ 1 ]->jp );
+						newPos += v.joints[ 1 ]->matAbs * vJointParams->daeInvBindMat * targetPos * v.weights[ 1 ];
+						//								newPos += v.joints[ 1 ]->matAbs * v.joints[ 1 ]->daeInvBindMat * targetPos * v.weights[ 1 ];
+					}
+					if ( v.joints[ 2 ] != 0x0 )
+					{
+						JointParameters *vJointParams = &any_cast< JointParameters >( v.joints[ 2 ]->jp );
+						newPos += v.joints[ 2 ]->matAbs * vJointParams->daeInvBindMat * targetPos * v.weights[ 2 ];
+						//								newPos += v.joints[ 2 ]->matAbs * v.joints[ 2 ]->daeInvBindMat * targetPos * v.weights[ 2 ];
+					}
+					if ( v.joints[ 3 ] != 0x0 )
+					{
+						JointParameters *vJointParams = &any_cast< JointParameters >( v.joints[ 3 ]->jp );
+						newPos += v.joints[ 3 ]->matAbs * vJointParams->daeInvBindMat * targetPos * v.weights[ 3 ];
+						//								newPos += v.joints[ 3 ]->matAbs * v.joints[ 3 ]->daeInvBindMat * targetPos * v.weights[ 3 ];
+					}
+					targetPos = newPos;
+				}
+
+				Vec3f diff = targetPos - v.pos;
+
+				MorphDiff md;
+				md.vertIndex = firstGeoVert + k;
+				md.posDiff = diff;
+				_morphTargets[ index ].diffs.push_back( md );
+			}
+		}
+	}
+
+}
+
+
 void ColladaConverter::processMeshes( bool optimize )
 {
 	// Note: At the moment the geometry for all nodes is copied and not referenced
@@ -585,229 +914,14 @@ void ColladaConverter::processMeshes( bool optimize )
 		vector< Joint * > jointLookup;
 		if( skin != 0x0 )
 		{
-			// Build lookup table
-			for( unsigned int j = 0; j < skin->jointArray->stringArray.size(); ++j )
-			{
-				string sid = skin->jointArray->stringArray[j];
-
-				jointLookup.push_back( 0x0 );
-				
-				bool found = false;
-				for( unsigned int k = 0; k < _joints.size(); ++k )
-				{
-					SceneNodeParameters *jparams = &any_cast< SceneNodeParameters >( _joints[ k ]->scncp );
-//					if( _joints[k]->daeNode->sid == sid )
-					if ( jparams->daeNode->sid == sid )
-					{
-						jointLookup[j] = _joints[k];
-						found = true;
-						break;
-					}
-				}
-
-				if( !found )
-				{
-					log( "Warning: joint '" + sid + "' used in skin controller not found" );
-				}
-			}
-			
-			// Find bind matrices
-			Matrix4f bindShapeMat = makeMatrix4f( &skin->bindShapeMat[0], _daeDoc.y_up );
-			for( unsigned int j = 0; j < skin->jointArray->stringArray.size(); ++j )
-			{
-				if( jointLookup[j] != 0x0 )
-				{
-					JointParameters *jprm = &any_cast< JointParameters >( jointLookup[ j ]->jp );
-					jointLookup[j]->used = true;
-					
-//					jointLookup[j]->daeInvBindMat =
-					jprm->daeInvBindMat =
-						makeMatrix4f( &skin->bindMatArray->floatArray[j * 16], _daeDoc.y_up );
-
-					// Multiply bind matrices with bind shape matrix
-					jprm->daeInvBindMat = jprm->daeInvBindMat * bindShapeMat;
-				}
-			}
+			buildSkinLookupTable( skin, jointLookup );
 		}
 		
 		unsigned int firstGeoVert = (unsigned int)_vertices.size();
 		
 		for( unsigned int j = 0; j < geo->triGroups.size(); ++j )
 		{
-			DaeTriGroup &iTriGroup = geo->triGroups[j];
-			TriGroup* oTriGroup = new TriGroup();
-
-			DaeMaterial *mat = _daeDoc.libMaterials.findMaterial(
-				meshParams->daeInstance->materialBindings[ iTriGroup.matId ] );
-// 				_meshes[i]->daeInstance->materialBindings[iTriGroup.matId] );
-			if( mat != 0x0 )
-			{
-				oTriGroup->matName = mat->name;
-				mat->used = true;
-			}
-			else
-				log( "Warning: Material '" + oTriGroup->matName + "' not found" );
-
-			oTriGroup->first = (unsigned int)_indices.size();
-			oTriGroup->count = (unsigned int)iTriGroup.indices.size();
-			oTriGroup->vertRStart = (unsigned int)_vertices.size();
-
-			// Add indices and vertices
-			oTriGroup->numPosIndices = (unsigned int)iTriGroup.vSource->posSource->floatArray.size() /
-			                          iTriGroup.vSource->posSource->paramsPerItem;
-			oTriGroup->posIndexToVertices = new vector< unsigned int >[oTriGroup->numPosIndices];
-			
-			for( unsigned int k = 0; k < iTriGroup.indices.size(); ++k )
-			{
-				// Try to find vertex
-				vector< unsigned int > &vertList = oTriGroup->posIndexToVertices[iTriGroup.indices[k].posIndex];
-				bool found = false;
-				unsigned int index = (unsigned int)_vertices.size();
-				
-				// Only check vertices that have the same Collada position index
-				for( unsigned int l = 0; l < vertList.size(); ++l )
-				{
-					Vertex &v = _vertices[vertList[l]];
-					
-					if( v.storedPos == iTriGroup.getPos( iTriGroup.indices[k].posIndex ) &&
-						v.storedNormal == iTriGroup.getNormal( iTriGroup.indices[k].normIndex ) &&
-						v.texCoords[0] == iTriGroup.getTexCoords( iTriGroup.indices[k].texIndex[0], 0 ) &&
-						v.texCoords[1] == iTriGroup.getTexCoords( iTriGroup.indices[k].texIndex[1], 1 ) &&
-						v.texCoords[2] == iTriGroup.getTexCoords( iTriGroup.indices[k].texIndex[2], 2 ) &&
-						v.texCoords[3] == iTriGroup.getTexCoords( iTriGroup.indices[k].texIndex[3], 3 ) )
-	
-					{
-						found = true;
-						index = vertList[l];
-						break;
-					}
-				}
-
-				if( found )
-				{
-					_indices.push_back( index );	
-				}
-				else
-				{
-					Vertex v;
-					v.vp = VertexParameters();
-					auto vp = &any_cast< VertexParameters >( v.vp );
-
-					vp->daePosIndex = iTriGroup.indices[ k ].posIndex;
-//					v.daePosIndex = iTriGroup.indices[k].posIndex;
-					int normIndex = iTriGroup.indices[k].normIndex;
-
-					// Position
-					v.storedPos = iTriGroup.getPos( vp->daePosIndex /*v.daePosIndex*/ );
-					v.pos = v.storedPos;
-					if( !_daeDoc.y_up )
-					{	
-						swap( v.pos.y, v.pos.z );
-						v.pos.z *= -1;
-					}
-
-					// Texture coordinates
-					v.texCoords[0] = iTriGroup.getTexCoords( iTriGroup.indices[k].texIndex[0], 0 );
-					v.texCoords[1] = iTriGroup.getTexCoords( iTriGroup.indices[k].texIndex[1], 1 );
-					v.texCoords[2] = iTriGroup.getTexCoords( iTriGroup.indices[k].texIndex[2], 2 );
-					v.texCoords[3] = iTriGroup.getTexCoords( iTriGroup.indices[k].texIndex[3], 3 );
-
-					// Normal
-					v.storedNormal = iTriGroup.getNormal( normIndex );
-
-					// Skinning
-					if( skin != 0x0 && /*v.daePosIndex*/ vp->daePosIndex < (int)skin->vertWeights.size() )
-					{
-						DaeVertWeights vertWeights = skin->vertWeights[/*v.daePosIndex*/ vp->daePosIndex ];
-						
-						// Sort weights
-						for( unsigned int xx = 0; xx < vertWeights.size(); ++xx )
-						{
-							for( unsigned int yy = 0; yy < xx; ++yy )
-							{
-								if( skin->weightArray->floatArray[(int)vertWeights[xx].weight] >
-								    skin->weightArray->floatArray[(int)vertWeights[yy].weight] )
-								{
-									swap( vertWeights[xx], vertWeights[yy] );
-								}
-							}
-						}
-						
-						// Take the four most significant weights
-						for( unsigned int l = 0; l < vertWeights.size(); ++l )
-						{
-							if( l == 4 ) break;
-							v.weights[l] = skin->weightArray->floatArray[vertWeights[l].weight];
-							v.joints[l] = jointLookup[vertWeights[l].joint];
-						}
-
-						// Normalize weights
-						float weightSum = v.weights[0] + v.weights[1] + v.weights[2] + v.weights[3];
-						if( weightSum > Math::Epsilon )
-						{
-							v.weights[0] /= weightSum;
-							v.weights[1] /= weightSum;
-							v.weights[2] /= weightSum;
-							v.weights[3] /= weightSum;
-						}
-						else
-						{
-							v.weights[0] = 1.0f;
-							v.weights[1] = v.weights[2] = v.weights[3] = 0.0f;
-						}
-
-						// Apply skinning to vertex
-						if( v.joints[0] != 0x0 || v.joints[1] != 0x0 || v.joints[2] != 0x0 || v.joints[3] != 0x0 )
-						{
-							Vec3f newPos( 0, 0, 0 );
-							if ( v.joints[ 0 ] != 0x0 )
-							{
-								JointParameters *vJointParams = &any_cast< JointParameters >( v.joints[ 0 ]->jp );
-//								newPos += v.joints[ 0 ]->matAbs * v.joints[ 0 ]->daeInvBindMat * v.pos * v.weights[ 0 ];
-								newPos += v.joints[ 0 ]->matAbs * vJointParams->daeInvBindMat * v.pos * v.weights[ 0 ];
-
-							}
-							if ( v.joints[ 1 ] != 0x0 )
-							{
-								JointParameters *vJointParams = &any_cast< JointParameters >( v.joints[ 1 ]->jp );
-// 								newPos += v.joints[ 1 ]->matAbs * v.joints[ 1 ]->daeInvBindMat * v.pos * v.weights[ 1 ];
-								newPos += v.joints[ 1 ]->matAbs * vJointParams->daeInvBindMat * v.pos * v.weights[ 1 ];
-							}
-							if ( v.joints[ 2 ] != 0x0 )
-							{
-								JointParameters *vJointParams = &any_cast< JointParameters >( v.joints[ 2 ]->jp );
-//								newPos += v.joints[ 2 ]->matAbs * v.joints[ 2 ]->daeInvBindMat * v.pos * v.weights[ 2 ];
-								newPos += v.joints[ 2 ]->matAbs * vJointParams->daeInvBindMat * v.pos * v.weights[ 2 ];
-							}
-							if ( v.joints[ 3 ] != 0x0 )
-							{
-								JointParameters *vJointParams = &any_cast< JointParameters >( v.joints[ 3 ]->jp );
-//								newPos += v.joints[ 3 ]->matAbs * v.joints[ 3 ]->daeInvBindMat * v.pos * v.weights[ 3 ];
-								newPos += v.joints[ 3 ]->matAbs * vJointParams->daeInvBindMat * v.pos * v.weights[ 3 ];
-							}
-							v.pos = newPos;
-						}
-					}
-					
-					_vertices.emplace_back( v );
-					_indices.push_back( index );
-
-					vertList.push_back( (unsigned int)_vertices.size() - 1 );
-				}
-			}
-
-			oTriGroup->vertREnd = (unsigned int)_vertices.size() - 1;
-			
-			// Remove degenerated triangles
-			unsigned int numDegTris = MeshOptimizer::removeDegeneratedTriangles( oTriGroup, _vertices, _indices );
-			if( numDegTris > 0 )
-			{
-				stringstream ss;
-				ss << numDegTris;
-				log( "Removed " + ss.str() + " degenerated triangles from mesh " + meshParams->daeNode->id /*_meshes[i]->daeNode->id*/ );
-			}
-			
-			_meshes[i]->triGroups.push_back( oTriGroup );			
+			processTriGroup( geo, j, meshParams, skin, jointLookup, i );
 		}
 
 		unsigned int numGeoVerts = (unsigned int)_vertices.size() - firstGeoVert;
@@ -815,101 +929,7 @@ void ColladaConverter::processMeshes( bool optimize )
 		// Morph targets
 		if( morpher != 0x0 && morpher->targetArray != 0x0 )
 		{
-			for( unsigned int j = 0; j < morpher->targetArray->stringArray.size(); ++j )
-			{
-				string targetId = morpher->targetArray->stringArray[j];
-				DaeGeometry *targetGeo = _daeDoc.libGeometries.findGeometry( targetId );
-				if( targetGeo == 0x0 ) continue;
-				
-				// Try to find morph target
-				int index = -1;
-				for( unsigned int k = 0; k < _morphTargets.size(); ++k )
-				{
-					if( targetId == _morphTargets[k].name )
-					{
-						index = k;
-						break;
-					}
-				}
-				
-				// Add new morph target if not found
-				if( index < 0 )
-				{
-					MorphTarget mt;
-					
-					if( targetGeo->name != "" )
-						strcpy( mt.name, targetGeo->name.c_str() );
-					else
-						strcpy( mt.name, targetId.c_str() );
-					
-					_morphTargets.push_back( mt );
-					index = (unsigned int)_morphTargets.size() - 1;
-				}
-
-				// Loop over all vertices (Collada allows only exactly one vertex source per mesh)
-				if( geo->vsources[0].posSource->floatArray.size() !=
-				    targetGeo->vsources[0].posSource->floatArray.size() )
-				{
-					log( "Warning: morph target geometry differs from base geometry" );
-					continue;
-				}
-				
-				for( unsigned int k = 0; k < numGeoVerts; ++k )
-				{
-					Vertex &v = _vertices[firstGeoVert + k];
- 					VertexParameters *vp = &any_cast< VertexParameters >( v.vp );
-
-					Vec3f basePos = geo->getPos( vp->daePosIndex /*v.daePosIndex*/  );
-					Vec3f targetPos = targetGeo->getPos( vp->daePosIndex /*v.daePosIndex*/ );
-					
-					if( targetPos != basePos )
-					{
-						if( !_daeDoc.y_up )
-						{	
-							swap( targetPos.y, targetPos.z );
-							targetPos.z *= -1;
-						}
-						
-						// Apply skinning to morph target vertex
-						if( v.joints[0] != 0x0 || v.joints[1] != 0x0 || v.joints[2] != 0x0 || v.joints[3] != 0x0 )
-						{
-							Vec3f newPos( 0, 0, 0 );
-							if ( v.joints[ 0 ] != 0x0 )
-							{
-								JointParameters *vJointParams = &any_cast< JointParameters >( v.joints[ 0 ]->jp );
-								newPos += v.joints[ 0 ]->matAbs * vJointParams->daeInvBindMat * targetPos * v.weights[ 0 ];
-//								newPos += v.joints[ 0 ]->matAbs * v.joints[ 0 ]->daeInvBindMat * targetPos * v.weights[ 0 ];
-							}
-							if ( v.joints[ 1 ] != 0x0 )
-							{
-								JointParameters *vJointParams = &any_cast< JointParameters >( v.joints[ 1 ]->jp );
-								newPos += v.joints[ 1 ]->matAbs * vJointParams->daeInvBindMat * targetPos * v.weights[ 1 ];
-//								newPos += v.joints[ 1 ]->matAbs * v.joints[ 1 ]->daeInvBindMat * targetPos * v.weights[ 1 ];
-							}
-							if ( v.joints[ 2 ] != 0x0 )
-							{
-								JointParameters *vJointParams = &any_cast< JointParameters >( v.joints[ 2 ]->jp );
-								newPos += v.joints[ 2 ]->matAbs * vJointParams->daeInvBindMat * targetPos * v.weights[ 2 ];
-//								newPos += v.joints[ 2 ]->matAbs * v.joints[ 2 ]->daeInvBindMat * targetPos * v.weights[ 2 ];
-							}
-							if ( v.joints[ 3 ] != 0x0 )
-							{
-								JointParameters *vJointParams = &any_cast< JointParameters >( v.joints[ 3 ]->jp );
-								newPos += v.joints[ 3 ]->matAbs * vJointParams->daeInvBindMat * targetPos * v.weights[ 3 ];
-//								newPos += v.joints[ 3 ]->matAbs * v.joints[ 3 ]->daeInvBindMat * targetPos * v.weights[ 3 ];
-							}
-							targetPos = newPos;
-						}
-						
-						Vec3f diff = targetPos - v.pos;
-						
-						MorphDiff md;
-						md.vertIndex = firstGeoVert + k;
-						md.posDiff = diff;
-						_morphTargets[index].diffs.push_back( md );
-					}
-				}
-			}	
+			processMorphTargets( morpher, geo, numGeoVerts, firstGeoVert );
 		}
 	}
 

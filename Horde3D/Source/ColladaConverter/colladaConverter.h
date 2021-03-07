@@ -57,7 +57,7 @@ public:
 
 private:
 	Matrix4f getNodeTransform( DaeNode &node, unsigned int frame );
-	SceneNode *findNode( const char *name, SceneNode *ignoredNode );
+// 	SceneNode *findNode( const char *name, SceneNode *ignoredNode );
 //	void checkNodeName( SceneNode *node );
 	bool validateInstance( const std::string &instanceId ) const;
 	SceneNode *processNode( DaeNode &node, SceneNode *parentNode,
@@ -65,6 +65,12 @@ private:
 	void calcTangentSpaceBasis( std::vector< Vertex > &vertices ) const;
 //	void processJoints();
 	void processMeshes( bool optimize );
+
+	void processMorphTargets( DaeMorph * morpher, DaeGeometry * geo, unsigned int numGeoVerts, unsigned int firstGeoVert );
+	void processTriGroup( DaeGeometry * geo, unsigned int geoTriGroupIndex, SceneNodeParameters * meshParams, DaeSkin * skin, 
+						  std::vector<Joint *> &jointLookup, unsigned int i );
+	void buildSkinLookupTable( DaeSkin * skin, std::vector<Joint *> &jointLookup );
+
 	bool writeGeometry( const std::string &assetPath, const std::string &assetName ) const;
 	void writeSGNode( const std::string &assetPath, const std::string &modelName, SceneNode *node, unsigned int depth, std::ofstream &outf ) const;
 	bool writeSceneGraph( const std::string &assetPath, const std::string &assetName, const std::string &modelName ) const;
