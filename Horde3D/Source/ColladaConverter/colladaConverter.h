@@ -62,6 +62,8 @@ private:
 	bool validateInstance( const std::string &instanceId ) const;
 	SceneNode *processNode( DaeNode &node, SceneNode *parentNode,
 	                        Matrix4f transAccum, std::vector< Matrix4f > animTransAccum );
+    
+    int getVertexIndexForTangent ( Vertex * v ) const override;
 	void calcTangentSpaceBasis( std::vector< Vertex > &vertices ) const;
 //	void processJoints();
 	void processMeshes( bool optimize );

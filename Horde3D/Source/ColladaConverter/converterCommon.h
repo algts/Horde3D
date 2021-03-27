@@ -207,6 +207,8 @@ public:
 
 protected:
 	virtual SceneNode *createSceneNode( AvailableSceneNodeTypes type ) = 0;
+    virtual int getVertexIndexForTangent( Vertex *v ) const = 0;
+    
 	void processSceneNode( SceneNode *node, SceneNode *parentNode, std::string &name, Matrix4f &m );
 
 	void calcTangentSpaceBasis( std::vector<Vertex> &verts ) const;

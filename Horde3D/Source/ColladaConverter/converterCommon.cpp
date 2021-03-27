@@ -35,87 +35,89 @@ void IConverter::processSceneNode( SceneNode *node, SceneNode *parentNode, std::
 	else node->matAbs = node->matRel;
 }
 
-// void IConverter::calcTangentSpaceBasis( vector<Vertex> &verts ) const
-// {
-// 	for ( unsigned int i = 0; i < verts.size(); ++i )
-// 	{
-// 		verts[ i ].normal = Vec3f( 0, 0, 0 );
-// 		verts[ i ].tangent = Vec3f( 0, 0, 0 );
-// 		verts[ i ].bitangent = Vec3f( 0, 0, 0 );
-// 	}
-// 
-// 	// Basic algorithm: Eric Lengyel, Mathematics for 3D Game Programming & Computer Graphics
-// 	for ( unsigned int i = 0; i < _meshes.size(); ++i )
-// 	{
-// 		for ( unsigned int j = 0; j < _meshes[ i ]->triGroups.size(); ++j )
-// 		{
-// 			TriGroup *triGroup = _meshes[ i ]->triGroups[ j ];
-// 
-// 			for ( unsigned int k = triGroup->first; k < triGroup->first + triGroup->count; k += 3 )
-// 			{
-// 				// Compute basis vectors for triangle
-// 				Vec3f edge1uv = verts[ _indices[ k + 1 ] ].texCoords[ 0 ] - verts[ _indices[ k ] ].texCoords[ 0 ];
-// 				Vec3f edge2uv = verts[ _indices[ k + 2 ] ].texCoords[ 0 ] - verts[ _indices[ k ] ].texCoords[ 0 ];
-// 				Vec3f edge1 = verts[ _indices[ k + 1 ] ].pos - verts[ _indices[ k ] ].pos;
-// 				Vec3f edge2 = verts[ _indices[ k + 2 ] ].pos - verts[ _indices[ k ] ].pos;
-// 				Vec3f normal = edge1.cross( edge2 );  // Normal weighted by triangle size (hence unnormalized)
-// 
-// 				float r = 1.0f / ( edge1uv.x * edge2uv.y - edge2uv.x * edge1uv.y ); // UV area normalization
-// 				Vec3f uDir = ( edge1 * edge2uv.y - edge2 * edge1uv.y ) * r;
-// 				Vec3f vDir = ( edge2 * edge1uv.x - edge1 * edge2uv.x ) * r;
-// 
-// 				// Accumulate basis for vertices
-// 				for ( unsigned int l = 0; l < 3; ++l )
-// 				{
-// 					verts[ _indices[ k + l ] ].normal += normal;
-// 					verts[ _indices[ k + l ] ].tangent += uDir;
-// 					verts[ _indices[ k + l ] ].bitangent += vDir;
-// 
-// 					// Handle texture seams where vertices were split
+void IConverter::calcTangentSpaceBasis( vector<Vertex> &verts ) const
+{
+	for ( unsigned int i = 0; i < verts.size(); ++i )
+	{
+		verts[ i ].normal = Vec3f( 0, 0, 0 );
+		verts[ i ].tangent = Vec3f( 0, 0, 0 );
+		verts[ i ].bitangent = Vec3f( 0, 0, 0 );
+	}
+
+	// Basic algorithm: Eric Lengyel, Mathematics for 3D Game Programming & Computer Graphics
+	for ( unsigned int i = 0; i < _meshes.size(); ++i )
+	{
+		for ( unsigned int j = 0; j < _meshes[ i ]->triGroups.size(); ++j )
+		{
+			TriGroup *triGroup = _meshes[ i ]->triGroups[ j ];
+
+			for ( unsigned int k = triGroup->first; k < triGroup->first + triGroup->count; k += 3 )
+			{
+				// Compute basis vectors for triangle
+				Vec3f edge1uv = verts[ _indices[ k + 1 ] ].texCoords[ 0 ] - verts[ _indices[ k ] ].texCoords[ 0 ];
+				Vec3f edge2uv = verts[ _indices[ k + 2 ] ].texCoords[ 0 ] - verts[ _indices[ k ] ].texCoords[ 0 ];
+				Vec3f edge1 = verts[ _indices[ k + 1 ] ].pos - verts[ _indices[ k ] ].pos;
+				Vec3f edge2 = verts[ _indices[ k + 2 ] ].pos - verts[ _indices[ k ] ].pos;
+				Vec3f normal = edge1.cross( edge2 );  // Normal weighted by triangle size (hence unnormalized)
+
+				float r = 1.0f / ( edge1uv.x * edge2uv.y - edge2uv.x * edge1uv.y ); // UV area normalization
+				Vec3f uDir = ( edge1 * edge2uv.y - edge2 * edge1uv.y ) * r;
+				Vec3f vDir = ( edge2 * edge1uv.x - edge1 * edge2uv.x ) * r;
+
+				// Accumulate basis for vertices
+				for ( unsigned int l = 0; l < 3; ++l )
+				{
+					verts[ _indices[ k + l ] ].normal += normal;
+					verts[ _indices[ k + l ] ].tangent += uDir;
+					verts[ _indices[ k + l ] ].bitangent += vDir;
+
+					// Handle texture seams where vertices were split
+					vector< unsigned int > &vertList =
+												triGroup->posIndexToVertices[ getVertexIndexForTangent( &verts[ _indices[ k + l ] ] ) ];
 // 					VertexParameters *vParams = &any_cast< VertexParameters >( verts[ _indices[ k + l ] ].vp );
 // 					vector< unsigned int > &vertList =
 // 												triGroup->posIndexToVertices[ vParams->daePosIndex ];
-// //						triGroup->posIndexToVertices[ verts[ _indices[ k + l ] ].daePosIndex ];
-// 					for ( unsigned int m = 0; m < vertList.size(); ++m )
-// 					{
-// 						if ( vertList[ m ] != _indices[ k + l ] &&
-// 							verts[ vertList[ m ] ].storedNormal == verts[ _indices[ k + l ] ].storedNormal )
-// 						{
-// 							verts[ vertList[ m ] ].normal += normal;
-// 							verts[ vertList[ m ] ].tangent += uDir;
-// 							verts[ vertList[ m ] ].bitangent += vDir;
-// 						}
-// 					}
-// 				}
-// 			}
-// 		}
-// 	}
-// 
-// 	// Normalize tangent space basis
-// 	unsigned int numInvalidBasis = 0;
-// 	for ( unsigned int i = 0; i < verts.size(); ++i )
-// 	{
-// 		// Check if tangent space basis is invalid
-// 		if ( verts[ i ].normal.length() == 0 || verts[ i ].tangent.length() == 0 || verts[ i ].bitangent.length() == 0 )
-// 			++numInvalidBasis;
-// 
-// 		// Gram-Schmidt orthogonalization
-// 		verts[ i ].normal.normalize();
-// 		Vec3f &n = verts[ i ].normal;
-// 		Vec3f &t = verts[ i ].tangent;
-// 		verts[ i ].tangent = ( t - n * n.dot( t ) ).normalized();
-// 
-// 		// Calculate handedness (required to support mirroring) and final bitangent
-// 		float handedness = n.cross( t ).dot( verts[ i ].bitangent ) < 0 ? -1.0f : 1.0f;
-// 		verts[ i ].bitangent = n.cross( t ) * handedness;
-// 	}
-// 
-// 	if ( numInvalidBasis > 0 )
-// 	{
-// 		log( "Warning: Geometry has zero-length basis vectors" );
-// 		log( "   Maybe two faces point in opposite directions and share same vertices" );
-// 	}
-// }
+//						triGroup->posIndexToVertices[ verts[ _indices[ k + l ] ].daePosIndex ];
+					for ( unsigned int m = 0; m < vertList.size(); ++m )
+					{
+						if ( vertList[ m ] != _indices[ k + l ] &&
+							verts[ vertList[ m ] ].storedNormal == verts[ _indices[ k + l ] ].storedNormal )
+						{
+							verts[ vertList[ m ] ].normal += normal;
+							verts[ vertList[ m ] ].tangent += uDir;
+							verts[ vertList[ m ] ].bitangent += vDir;
+						}
+					}
+				}
+			}
+		}
+	}
+
+	// Normalize tangent space basis
+	unsigned int numInvalidBasis = 0;
+	for ( unsigned int i = 0; i < verts.size(); ++i )
+	{
+		// Check if tangent space basis is invalid
+		if ( verts[ i ].normal.length() == 0 || verts[ i ].tangent.length() == 0 || verts[ i ].bitangent.length() == 0 )
+			++numInvalidBasis;
+
+		// Gram-Schmidt orthogonalization
+		verts[ i ].normal.normalize();
+		Vec3f &n = verts[ i ].normal;
+		Vec3f &t = verts[ i ].tangent;
+		verts[ i ].tangent = ( t - n * n.dot( t ) ).normalized();
+
+		// Calculate handedness (required to support mirroring) and final bitangent
+		float handedness = n.cross( t ).dot( verts[ i ].bitangent ) < 0 ? -1.0f : 1.0f;
+		verts[ i ].bitangent = n.cross( t ) * handedness;
+	}
+
+	if ( numInvalidBasis > 0 )
+	{
+		log( "Warning: Geometry has zero-length basis vectors" );
+		log( "   Maybe two faces point in opposite directions and share same vertices" );
+	}
+}
 
 
 SceneNode *IConverter::findNode( const char *name, SceneNode *ignoredNode )

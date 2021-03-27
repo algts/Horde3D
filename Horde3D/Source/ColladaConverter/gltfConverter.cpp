@@ -832,9 +832,16 @@ void GLTFConverter::processTriGroup( tinygltf::Mesh *geo, unsigned int geoTriGro
 	_meshes[ i ]->triGroups.push_back( oTriGroup );
 }
 
+int GLTFConverter::getVertexIndexForTangent ( Vertex* v ) const
+{
+    auto *vp = &any_cast< VertexParameters >( v->vp ); 
+    return vp->gltfPosIndex;
+}
 
 void GLTFConverter::processMeshes( bool optimize )
 {
+    bool tangentFromModel = false;
+    
 	// Note: At the moment the geometry for all nodes is copied and not referenced
 	for ( unsigned int i = 0; i < _meshes.size(); ++i )
 	{
@@ -901,7 +908,8 @@ void GLTFConverter::processMeshes( bool optimize )
 	}
 
 	// Calculate tangent space basis for base mesh
-// 	calcTangentSpaceBasis( _vertices );
+	if ( !tangentFromModel )
+        calcTangentSpaceBasis( _vertices );
 // 
 // 	// Calculate tangent space basis for morph targets
 // 	vector< Vertex > verts( _vertices );

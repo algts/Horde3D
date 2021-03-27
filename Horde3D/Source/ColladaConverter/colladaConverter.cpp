@@ -477,7 +477,13 @@ SceneNode *ColladaConverter::processNode( DaeNode &node, SceneNode *parentNode,
 	return oNode;
 }
 
+int ColladaConverter::getVertexIndexForTangent ( Vertex * v ) const 
+{
+    auto *vp = &any_cast< VertexParameters >( v->vp ); 
+    return vp->daePosIndex;
+}
 
+/*
 void ColladaConverter::calcTangentSpaceBasis( vector<Vertex> &verts ) const
 {
 	for( unsigned int i = 0; i < verts.size(); ++i )
@@ -558,7 +564,7 @@ void ColladaConverter::calcTangentSpaceBasis( vector<Vertex> &verts ) const
 		log( "Warning: Geometry has zero-length basis vectors" );
 		log( "   Maybe two faces point in opposite directions and share same vertices" );
 	}
-}
+} */
 
 
 // void ColladaConverter::processJoints()

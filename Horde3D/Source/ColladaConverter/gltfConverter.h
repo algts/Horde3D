@@ -81,6 +81,9 @@ public:
 protected:
 	size_t getAnimationTotalFrameCount();
 	size_t getAnimationFrameCount( int animIndex, int nodeID );
+    
+    int getVertexIndexForTangent( Vertex *v ) const override;
+    
 	Matrix4f getNodeTransform( tinygltf::Node &node, int nodeId, unsigned int frame );
 
 	int findAnimationIndex( tinygltf::Model &model, int nodeId );
