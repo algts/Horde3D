@@ -10,6 +10,13 @@
 #include <sstream>
 #include <string>
 
+// Special case for c++11 compilers, std::enable_if_t is in c++14 and later versions
+#if __cplusplus == 201103L
+  /// Alias template for enable_if
+  template<bool _Cond, typename _Tp = void>
+    using enable_if_t = typename enable_if<_Cond, _Tp>::type;
+#endif
+
 namespace detail { namespace static_any {
 
 struct move_tag {};
